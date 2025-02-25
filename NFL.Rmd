@@ -1,3 +1,510 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+
+library(nflfastR)
+
+
+
+
+library(ggrepel)
+library(nflreadr)
+
+
+
+
+
+
+
+```
+
+```{r}
+
+NXTGEN_2023 <- load_nextgen_stats() %>% filter(season == 2023)
+
+advstats <- load_pfr_advstats()
+
+
+QPR <- load_espn_qbr()
+
+Mahomes <- QPR %>% filter(name_short == "P. Mahomes")
+
+MahomesNXTGEN <- NXTGEN_2023 %>% filter(player_display_name == "Patrick Mahomes", season == 2023)
+
+total_data <- NXTGEN_2023 %>% filter(week == 0)
+
+
+averaged_data <- NXTGEN_2023 %>%
+  filter(season_type == "REG", week != 0) %>%
+  group_by(player_display_name) %>%
+  filter(n() >= 5) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE)))
+
+
+combined_avg_data <- averaged_data %>%
+  left_join(QPR %>% select(name_display, epa_total, run, pass), by = c("player_display_name" = "name_display"))
+
+combined_total_data <- total_data %>%
+  left_join(QPR %>% select(name_display, epa_total, run, pass), by = c("player_display_name" = "name_display"))
+
+combined_total_data_unique <- combined_total_data %>%
+  distinct(player_display_name, .keep_all = TRUE)
+
+
+# Remove duplicate players based on player_display_name
+combined_avg_data_unique <- combined_avg_data %>%
+  distinct(player_display_name, .keep_all = TRUE)
+
+# Define a function to calculate percentiles
+calculate_percentile <- function(x) {
+  rank(x, ties.method = "min") / length(x) * 100
+}
+
+# Define a function to calculate flipped percentiles for interceptions
+calculate_flipped_percentile <- function(x) {
+  (length(x) - rank(x, ties.method = "min") + 1) / length(x) * 100
+}
+
+# Calculate percentiles for each specified column, flipping the percentile for interceptions
+percentile_avg_data <- combined_avg_data_unique %>%
+  mutate(
+    aggressiveness_percentile = round(calculate_percentile(aggressiveness)),
+    attempts_percentile = round(calculate_percentile(attempts)),
+    pass_yards_percentile = round(calculate_percentile(pass_yards)),
+    pass_touchdowns_percentile = round(calculate_percentile(pass_touchdowns)),
+    interceptions_percentile = round(calculate_flipped_percentile(interceptions)), # Flipped percentile
+    passer_rating_percentile = round(calculate_percentile(passer_rating)),
+    completion_percentage_percentile = round(calculate_percentile(completion_percentage)),
+    epa_total_percentile = round(calculate_percentile(epa_total)),
+    pass_percentile = round(calculate_percentile(pass)),
+    run_percentile = round(calculate_percentile(run)),completion_percentage_above_expectation_percentile = round(calculate_percentile(completion_percentage_above_expectation)),
+    avg_time_to_throw_percentile = round(calculate_percentile(avg_time_to_throw))
+  )
+
+percentile_total_data <- combined_total_data_unique %>%
+  mutate(
+    Agressiveness = round(calculate_percentile(aggressiveness)),
+    "Pass attempts" = round(calculate_percentile(attempts)),
+    "Passing yds" = round(calculate_percentile(pass_yards)),
+    "Passing TDs" = round(calculate_percentile(pass_touchdowns)),
+    Interceptions = round(calculate_flipped_percentile(interceptions)), # Flipped percentile
+    "Passer rating" = round(calculate_percentile(passer_rating)),
+    "Completion %" = round(calculate_percentile(completion_percentage)),
+    totalEPA = round(calculate_percentile(epa_total)),
+    passingEPA = round(calculate_percentile(pass)),
+    runningEPA = round(calculate_percentile(run)),"Comp % abv expected" = round(calculate_percentile(completion_percentage_above_expectation)),
+    "Avg time to throw" = round(calculate_percentile(avg_time_to_throw))
+  )
+
+
+```
+
+
+```{r}
+# ✅ Filter for each QB in percentile_avg_data
+Mahomes_avg <- percentile_avg_data %>% filter(player_display_name == "Patrick Mahomes")
+Allen_avg <- percentile_avg_data %>% filter(player_display_name == "Josh Allen")
+Murray_avg <- percentile_avg_data %>% filter(player_display_name == "Kyler Murray")
+Young_avg <- percentile_avg_data %>% filter(player_display_name == "Bryce Young")
+Herbert_avg <- percentile_avg_data %>% filter(player_display_name == "Justin Herbert")
+Stroud_avg <- percentile_avg_data %>% filter(player_display_name == "C.J. Stroud")
+Jackson_avg <- percentile_avg_data %>% filter(player_display_name == "Lamar Jackson")
+
+# ✅ Filter for each QB in percentile_total_data
+Mahomes_total <- percentile_total_data %>% filter(player_display_name == "Patrick Mahomes")
+Allen_total <- percentile_total_data %>% filter(player_display_name == "Josh Allen")
+Murray_total <- percentile_total_data %>% filter(player_display_name == "Kyler Murray")
+Young_total <- percentile_total_data %>% filter(player_display_name == "Bryce Young")
+Herbert_total <- percentile_total_data %>% filter(player_display_name == "Justin Herbert")
+Jackson_total <- percentile_total_data %>% filter(player_display_name == "Lamar Jackson")
+Stroud_total <- percentile_total_data %>% filter(player_display_name == "C.J. Stroud")
+
+
+columns_to_pivot <- c(
+  "Agressiveness", "Pass attempts", "Passing yds", "Passing TDs", 
+  "Interceptions", "Passer rating", "Completion %", 
+  "totalEPA", "passingEPA", "runningEPA", 
+  "Comp % abv expected", "Avg time to throw"
+)
+
+# ✅ Filter each QB's percentile data
+qb_list <- c("C.J. Stroud", "Lamar Jackson", "Patrick Mahomes", "Josh Allen", "Kyler Murray", "Bryce Young", "Justin Herbert")
+
+qb_avg_data <- percentile_avg_data %>% filter(player_display_name %in% qb_list)
+qb_total_data <- percentile_total_data %>% filter(player_display_name %in% qb_list)
+
+# ✅ Pivot and format total data for each QB
+final_qb_data <- qb_total_data %>%
+  pivot_longer(
+    cols = all_of(columns_to_pivot),  # Specify columns to pivot
+    names_to = "stat",                # Name of the new column that will contain the variable names
+    values_to = "percentile_value"    # Name of the new column that will contain the values
+  ) %>%
+  select(player_display_name, stat, percentile_value)
+
+# ✅ Create separate data frames for each QB
+qb_dfs <- final_qb_data %>%
+  split(.$player_display_name) %>%
+  map(~ .x[c(2, 3, 4, 5, 7, 11, 12, 1, 6, 8, 9, 10),] %>%
+        mutate(index = 1:12) %>%
+        mutate(type = case_when(
+          index %in% 1:4 ~ "Passing",
+          index %in% 5:8 ~ "Completion",
+          index %in% 9:12 ~ "Effectiveness/Scoring"
+        )))
+
+# ✅ Assign each QB's data frame
+stroud_df <- qb_dfs[["C.J. Stroud"]]
+jackson_df <- qb_dfs[["Lamar Jackson"]]
+mahomes_df <- qb_dfs[["Patrick Mahomes"]]
+allen_df <- qb_dfs[["Josh Allen"]]
+murray_df <- qb_dfs[["Kyler Murray"]]
+young_df <- qb_dfs[["Bryce Young"]]
+herbert_df <- qb_dfs[["Justin Herbert"]]
+
+# ✅ Define color schemes for each QB
+qb_colors <- list(
+  "C.J. Stroud" = c("darkred", "grey", "navy"),
+  "Lamar Jackson" = c("purple", "black", "gold"),
+  "Patrick Mahomes" = c("red", "gold", "white"),
+  "Josh Allen" = c("blue", "red", "white"),
+  "Kyler Murray" = c("maroon", "black", "white"),
+  "Bryce Young" = c("#008080", "black", "#C0C0C0"),
+  "Justin Herbert" = c("powderblue", "yellow", "navy")
+)
+
+color1 <- qb_colors[["C.J. Stroud"]][1]
+color2 <- qb_colors[["C.J. Stroud"]][2]
+color3 <- qb_colors[["C.J. Stroud"]][3]
+
+color4 <- qb_colors[["Lamar Jackson"]][1]
+color5 <- qb_colors[["Lamar Jackson"]][2]
+color6 <- qb_colors[["Lamar Jackson"]][3]
+
+color7 <- qb_colors[["Patrick Mahomes"]][1]
+color8 <- qb_colors[["Patrick Mahomes"]][2]
+color9 <- qb_colors[["Patrick Mahomes"]][3]
+
+color10 <- qb_colors[["Josh Allen"]][1]
+color11 <- qb_colors[["Josh Allen"]][2]
+color12 <- qb_colors[["Josh Allen"]][3]
+
+color13 <- qb_colors[["Kyler Murray"]][1]
+color14 <- qb_colors[["Kyler Murray"]][2]
+color15 <- qb_colors[["Kyler Murray"]][3]
+
+color16 <- qb_colors[["Bryce Young"]][1]
+color17 <- qb_colors[["Bryce Young"]][2]
+color18 <- qb_colors[["Bryce Young"]][3]
+
+color19 <- qb_colors[["Justin Herbert"]][1]
+color20 <- qb_colors[["Justin Herbert"]][2]
+color21 <- qb_colors[["Justin Herbert"]][3]
+
+```
+
+
+
+
+```{r}
+# Stroud
+
+
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(stroud_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(stroud_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, myAng)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image (Ensure it's a PNG file)
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/stroud.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = stroud_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = stroud_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color1, color2, color3)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "CJ Stroud ", subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ Display the figure with the image in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the plot over the background
+grid.raster(img, x = 0.28, y = 0.85, width = 0.15)  # Image in the top-right corner
+
+
+```
+
+```{r}
+# Jackson
+
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(jackson_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(jackson_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, ang)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image for Lamar Jackson
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/jackson.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = jackson_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = jackson_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color4, color5, color6)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "Lamar Jackson",
+       subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ First, print the plot so it appears in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the ggplot first
+
+# ✅ Then, overlay the image on top (so it stays visible)
+grid.raster(img, x = 0.28, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
+
+```{r}
+# Mahomes
+
+
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(jackson_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(jackson_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, ang)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image for Lamar Jackson
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/mahomes.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = mahomes_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = mahomes_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color7, color8, color9)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "Patrick Mahomes",
+       subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ First, print the plot so it appears in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the ggplot first
+
+# ✅ Then, overlay the image on top (so it stays visible)
+grid.raster(img, x = 0.28, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
+
+```{r}
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(jackson_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(jackson_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, ang)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image for Lamar Jackson
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/murray.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = murray_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = murray_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color13, color14, color15)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "Kyler Murray",
+       subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ First, print the plot so it appears in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the ggplot first
+
+# ✅ Then, overlay the image on top (so it stays visible)
+grid.raster(img, x = 0.28, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
+
+
+```{r}
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(jackson_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(jackson_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, ang)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image for Lamar Jackson
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/allen.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = allen_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = allen_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color10, color11, color12)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "Josh Allen",
+       subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ First, print the plot so it appears in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the ggplot first
+
+# ✅ Then, overlay the image on top (so it stays visible)
+grid.raster(img, x = 0.28, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
+
+
+```{r}
 #| fig-width: 12
 #| fig-height: 7.5
 
@@ -50,3 +557,62 @@ print(p, newpage = FALSE)  # Print the ggplot first
 
 # ✅ Then, overlay the image on top (so it stays visible)
 grid.raster(img, x = 0.31, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
+
+
+```{r}
+#| fig-width: 12
+#| fig-height: 7.5
+
+library(ggplot2)
+library(grid)
+library(png)
+
+temp <- (360 / length(jackson_df$index)) / 2
+myAng <- seq(-temp, -360 + temp, length.out = length(jackson_df$index))
+ang <- ifelse(myAng < -90, myAng + 180, ang)
+ang <- ifelse(ang < -90, ang + 180, ang)
+
+# ✅ Load the image for Lamar Jackson
+img <- readPNG("/Users/ericwentz/Desktop/COMP212/Activities/website/ericwentz5.github.io/herbert.png")
+
+# ✅ Create the polar plot
+p <- ggplot(data = herbert_df, aes(x = reorder(stat, index), y = percentile_value, label = percentile_value, fill = type)) +
+  geom_bar(data = herbert_df, width = 1, color = "oldlace", stat = "identity") +
+  coord_polar(clip = "off") +  
+  geom_bar(aes(y=100, fill=type), stat="identity", width=1, alpha=0.5) +
+  geom_hline(yintercept = seq(0, 100, by = 100), color = "oldlace", linewidth = 1) +
+  geom_vline(xintercept = seq(.5, 12, by = 1), color = "oldlace", linewidth = .5) +
+  geom_label(color = "gray20", fill = "oldlace", size=2.5, fontface="bold", family = "Comic Sans MS", show.legend = FALSE) +
+  scale_fill_manual(values=c(color19, color20, color21)) +
+  theme(
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "oldlace", color="oldlace"),
+    legend.title = element_blank(),
+    legend.text = element_text(colour = "gray20", family = "Comic Sans MS", face = "bold"),
+    legend.key.size = unit(.5, "cm"),
+    legend.box.spacing = unit(0, "mm"),
+    plot.title = element_text(hjust = .5, colour = "gray20", face = "bold", size = 16, family = "Comic Sans MS"),
+    plot.subtitle = element_text(hjust = .5, colour = "gray20", size = 8, family = "Comic Sans MS"),
+    plot.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.background = element_rect(fill = "oldlace", color="oldlace"),
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(face = "bold", size = 6.8, colour = "gray20"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(face = "bold", size = 9, family = "Comic Sans MS", angle = 35)
+  ) +
+  labs(title = "Justin Herbert",
+       subtitle = "@EricWentz // 2023 Season // via: NFLFastR", x = NULL, y = NULL)
+
+# ✅ First, print the plot so it appears in the background
+grid.newpage()  # Create a new plotting page
+print(p, newpage = FALSE)  # Print the ggplot first
+
+# ✅ Then, overlay the image on top (so it stays visible)
+grid.raster(img, x = 0.31, y = 0.85, width = 0.12)  # Adjust x, y, width
+
+```
